@@ -127,7 +127,6 @@ export interface SearchParams {
   schoolId?: string;
   /** "match" needs a signed-in viewer; falls back to "rating". */
   sort?: "match" | "rating" | "newest" | "active";
-  verifiedOnly?: boolean;
   limit?: number;
 }
 
@@ -139,7 +138,6 @@ export function searchTeachers(params: SearchParams): MatchResult[] {
     categorySlug = "",
     schoolId = "",
     sort = viewerId ? "match" : "rating",
-    verifiedOnly = false,
     limit = 48,
   } = params;
 
@@ -148,6 +146,11 @@ export function searchTeachers(params: SearchParams): MatchResult[] {
 
   // Only students who actually offer something can appear as teachers.
   clauses.push(`EXISTS (SELECT 1 FROM user_skills us WHERE us.user_id = u.id AND us.kind = 'teach')`);
+
+  // Unverified students cannot be booked, so listing them would only produce a
+  // "Request a session" button that refuses. Their profile stays reachable by
+  // direct link.
+  clauses.push(`u.verification_status = 'verified'`);
 
   if (viewerId) {
     clauses.push("u.id <> ?");
@@ -160,8 +163,6 @@ export function searchTeachers(params: SearchParams): MatchResult[] {
     );
     args.push(viewerId, viewerId);
   }
-
-  if (verifiedOnly) clauses.push(`u.verification_status = 'verified'`);
 
   if (schoolId) {
     clauses.push("u.school_id = ?");

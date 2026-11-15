@@ -77,14 +77,16 @@ export default async function ProfilePage({
   const tags = ratingTagCounts(person.id).slice(0, 5);
   const balance = viewer ? balanceOf(viewer.id) : 0;
 
+  // Whether anyone at all could book this student, independent of who's looking.
+  const personBookable =
+    !person.is_suspended && person.verification_status === "verified" && teaches.length > 0;
+
   const canRequest =
     Boolean(viewer) &&
     !isSelf &&
     !blocked &&
-    !person.is_suspended &&
-    person.verification_status === "verified" &&
-    viewer?.verification_status === "verified" &&
-    teaches.length > 0;
+    personBookable &&
+    viewer?.verification_status === "verified";
 
   return (
     <div className="wrap grid gap-10 py-12 lg:grid-cols-[1.25fr_0.9fr] lg:py-16">
@@ -294,6 +296,20 @@ export default async function ProfilePage({
                 Safety settings
               </Link>
             </>
+          ) : !personBookable ? (
+            <>
+              <h2 className="text-lg">Not available right now</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                {person.is_suspended
+                  ? `${person.name.split(" ")[0]}'s account is suspended while moderators look into a report.`
+                  : person.verification_status !== "verified"
+                    ? `${person.name.split(" ")[0]} hasn't confirmed their school email yet, so they can't be booked.`
+                    : `${person.name.split(" ")[0]} isn't offering any skills at the moment.`}
+              </p>
+              <Link href="/browse" className="btn btn-primary mt-5 w-full">
+                Find someone else
+              </Link>
+            </>
           ) : !viewer ? (
             <>
               <h2 className="text-lg">Request a session</h2>
@@ -342,11 +358,9 @@ export default async function ProfilePage({
             </>
           ) : (
             <>
-              <h2 className="text-lg">Not available right now</h2>
+              <h2 className="text-lg">You can&apos;t book this student</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                {person.verification_status !== "verified"
-                  ? `${person.name.split(" ")[0]} hasn't finished verifying their school email yet.`
-                  : `${person.name.split(" ")[0]} isn't offering any skills at the moment.`}
+                Sessions are only available between verified students.
               </p>
               <Link href="/browse" className="btn btn-ghost mt-5 w-full">
                 Find someone else

@@ -26,7 +26,6 @@ export default async function BrowsePage({
     category?: string;
     school?: string;
     sort?: string;
-    verified?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -40,14 +39,13 @@ export default async function BrowsePage({
     query: params.q ?? "",
     categorySlug: params.category ?? "",
     schoolId: params.school ?? "",
-    verifiedOnly: params.verified === "1",
     sort,
   });
 
   const categories = listCategories();
   const schools = listSchools();
   const activeCategory = categories.find((c) => c.slug === params.category);
-  const hasFilters = Boolean(params.q || params.category || params.school || params.verified);
+  const hasFilters = Boolean(params.q || params.category || params.school);
 
   return (
     <div className="wrap py-12 lg:py-16">
@@ -57,7 +55,7 @@ export default async function BrowsePage({
         lead={
           activeCategory
             ? activeCategory.blurb
-            : "Every student here offers at least one skill. Search by what you want to learn, then send a request using your credits."
+            : "Every student here has confirmed a school email and offers at least one skill. Search by what you want to learn, then send a request using your credits."
         }
       />
 
@@ -109,16 +107,18 @@ export default async function BrowsePage({
         </button>
 
         <div className="flex flex-wrap items-center gap-4 md:col-span-4">
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <input
-              type="checkbox"
-              name="verified"
-              value="1"
-              defaultChecked={params.verified === "1"}
-              className="size-4 accent-[var(--c-brand)]"
-            />
-            Verified students only
-          </label>
+          <p className="flex items-center gap-2 text-sm text-muted">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M20 6.5 9.5 17 4 11.5"
+                stroke="var(--c-verify)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Everyone listed here is a verified student
+          </p>
 
           {schools.length > 1 ? (
             <label className="flex items-center gap-2 text-sm text-muted">
