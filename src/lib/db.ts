@@ -12,9 +12,12 @@ function resolveDatabasePath(): string {
 }
 
 function applySchema(db: Database.Database): void {
-  const schemaPath = path.join(process.cwd(), "src", "lib", "schema.sql");
-  const sql = fs.readFileSync(schemaPath, "utf8");
-  db.exec(sql);
+  const dir = path.join(process.cwd(), "src", "lib");
+  // Both files are idempotent: CREATE ... IF NOT EXISTS, INSERT OR IGNORE.
+  // Running them on every connection means a fresh deployment comes up with
+  // its tables and a usable skill catalogue, with no migration step.
+  db.exec(fs.readFileSync(path.join(dir, "schema.sql"), "utf8"));
+  db.exec(fs.readFileSync(path.join(dir, "taxonomy.sql"), "utf8"));
 }
 
 /**

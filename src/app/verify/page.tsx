@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/auth-shell";
 import { VerifyForm } from "@/components/forms/auth-forms";
+import { mailIsSimulated } from "@/lib/email";
 import { getCurrentUser } from "@/lib/session";
 
 export const metadata: Metadata = {
@@ -42,7 +43,7 @@ export default async function VerifyPage() {
         </>
       }
     >
-      <VerifyForm devHint={process.env.DEV_CODE_HINT === "1"} />
+      <VerifyForm devHint={mailIsSimulated()} />
     </AuthShell>
   );
 }

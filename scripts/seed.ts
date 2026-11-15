@@ -65,10 +65,10 @@ function wipe(): void {
     "availability",
     "user_skills",
     "users",
-    "skills",
-    "skill_categories",
     "schools",
   ];
+  // skills and skill_categories are NOT wiped: they come from
+  // src/lib/taxonomy.sql and exist in every deployment, demo or not.
   db.pragma("foreign_keys = OFF");
   for (const table of tables) db.prepare(`DELETE FROM ${table}`).run();
   db.pragma("foreign_keys = ON");
@@ -92,134 +92,8 @@ const SCHOOLS = [
   },
 ];
 
-// ------------------------------------------------------------ categories
-const TAXONOMY: {
-  name: string;
-  slug: string;
-  icon: string;
-  blurb: string;
-  skills: string[];
-}[] = [
-  {
-    name: "Academics & STEM",
-    slug: "academics-stem",
-    icon: "🧪",
-    blurb: "Course content, problem sets and the subjects people get stuck on.",
-    skills: [
-      "Calculus I",
-      "Calculus II",
-      "Organic Chemistry",
-      "Physics — Mechanics",
-      "Statistics",
-      "Linear Algebra",
-      "Biology — Genetics",
-      "Econometrics",
-    ],
-  },
-  {
-    name: "Writing & Languages",
-    slug: "writing-languages",
-    icon: "✍️",
-    blurb: "Essays, citations, and conversation practice in another language.",
-    skills: [
-      "Essay Structure",
-      "Research Papers",
-      "Citation & Referencing",
-      "Spanish Conversation",
-      "Korean — Beginner",
-      "Mandarin Conversation",
-      "Public Speaking",
-      "Creative Writing",
-    ],
-  },
-  {
-    name: "Code & Tech",
-    slug: "code-tech",
-    icon: "💻",
-    blurb: "Programming, data and the tools that break the night before a deadline.",
-    skills: [
-      "Python Basics",
-      "JavaScript & React",
-      "Git & GitHub",
-      "SQL & Databases",
-      "Data Analysis with Pandas",
-      "Machine Learning Intro",
-      "Excel & Spreadsheets",
-      "LaTeX",
-    ],
-  },
-  {
-    name: "Design & Visual",
-    slug: "design-visual",
-    icon: "🎨",
-    blurb: "Making things look like someone meant them.",
-    skills: [
-      "Figma",
-      "Poster & Print Design",
-      "Photography Basics",
-      "Video Editing",
-      "Illustration",
-      "Portfolio Reviews",
-    ],
-  },
-  {
-    name: "Music & Audio",
-    slug: "music-audio",
-    icon: "🎧",
-    blurb: "Instruments, theory and recording.",
-    skills: [
-      "Guitar — Beginner",
-      "Piano — Beginner",
-      "Music Theory",
-      "Audio Recording",
-      "DJing",
-      "Singing Technique",
-    ],
-  },
-  {
-    name: "Exams & Applications",
-    slug: "exams-applications",
-    icon: "🎯",
-    blurb: "Standardised tests, grad school and the forms nobody explains.",
-    skills: [
-      "GRE Quantitative",
-      "LSAT Logic Games",
-      "MCAT Biology",
-      "Grad School Applications",
-      "Scholarship Essays",
-      "Interview Practice",
-    ],
-  },
-  {
-    name: "Health & Movement",
-    slug: "health-movement",
-    icon: "🏃",
-    blurb: "Training, nutrition basics and sports taught by people who do them.",
-    skills: [
-      "Strength Training Basics",
-      "Running Form",
-      "Yoga — Beginner",
-      "Climbing Technique",
-      "Swimming Technique",
-      "Meal Prep on a Budget",
-    ],
-  },
-  {
-    name: "Life & Practical",
-    slug: "life-practical",
-    icon: "🔧",
-    blurb: "The useful, unglamorous things that make a semester easier.",
-    skills: [
-      "Bike Repair",
-      "Budgeting & Student Finance",
-      "Cooking Fundamentals",
-      "Sewing & Repairs",
-      "Time Management",
-      "Driving Theory",
-      "CV & Cover Letters",
-    ],
-  },
-];
+// The skill catalogue lives in src/lib/taxonomy.sql and is applied to every
+// database on connect, so it is shared by demo and production deployments.
 
 // ----------------------------------------------------------------- people
 interface SeedUser {
@@ -881,28 +755,16 @@ for (const school of SCHOOLS) {
   );
 }
 
-const skillIds = new Map<string, string>();
-const insertCategory = db.prepare(
-  `INSERT INTO skill_categories (id, name, slug, blurb, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?)`
+// The catalogue is already in place (src/lib/taxonomy.sql, applied on
+// connect). The seed only needs to look skills up by name.
+const skillIds = new Map<string, string>(
+  (db.prepare(`SELECT id, name FROM skills`).all() as { id: string; name: string }[]).map(
+    (row) => [row.name, row.id]
+  )
 );
-const insertSkill = db.prepare(
-  `INSERT INTO skills (id, name, slug, category_id, created_at) VALUES (?, ?, ?, ?, ?)`
-);
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-TAXONOMY.forEach((category, index) => {
-  const categoryId = newId();
-  insertCategory.run(categoryId, category.name, category.slug, category.blurb, category.icon, index);
-  for (const skill of category.skills) {
-    const id = newId();
-    skillIds.set(skill, id);
-    insertSkill.run(id, skill, slugify(skill), categoryId, now);
-  }
-});
+if (skillIds.size === 0) {
+  throw new Error("No skills found — src/lib/taxonomy.sql did not load.");
+}
 
 const passwordHash = hashPassword(DEMO_PASSWORD);
 const userIds = new Map<string, string>();

@@ -1,0 +1,46 @@
+# SkillSwap on Fly.io.
+#
+# Deliberately a single machine. The database is a file on the mounted volume
+# and the video-call signalling rooms are in process memory, so a second
+# machine would serve a different database and a different set of rooms.
+# Do not `fly scale count 2`.
+
+app = "skillswap"
+primary_region = "iad"
+
+[build]
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  DATABASE_PATH = "/data/skillswap.db"
+  EMAIL_TRANSPORT = "resend"
+
+[[mounts]]
+  source = "skillswap_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # Keep one machine up: suspending mid-call would drop it, and WebSockets
+  # don't survive a cold start.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 150
+    hard_limit = 250
+
+[[http_service.checks]]
+  grace_period = "15s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

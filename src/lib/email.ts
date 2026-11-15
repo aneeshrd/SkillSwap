@@ -1,10 +1,12 @@
 /**
- * Outbound mail. The `console` transport is the development default: it prints
- * the message to the server log instead of sending it, so you can verify a
- * signup without wiring up a mail provider.
+ * Outbound mail.
  *
- * For a pilot, implement `smtpTransport` against your school's relay (or a
- * provider like Postmark) and set EMAIL_TRANSPORT=smtp.
+ *   EMAIL_TRANSPORT=console   print to the server log (development default)
+ *   EMAIL_TRANSPORT=resend    send for real through the Resend HTTPS API
+ *
+ * Resend is used rather than SMTP because most container hosts block outbound
+ * ports 25/465/587, and an HTTPS API doesn't care. Swapping in another
+ * provider means replacing one function.
  */
 
 export interface Mail {
@@ -13,41 +15,85 @@ export interface Mail {
   body: string;
 }
 
-function consoleTransport(mail: Mail): void {
-  const line = "-".repeat(64);
+export type MailResult = { ok: true } | { ok: false; error: string };
+
+function activeTransport(): "console" | "resend" {
+  const configured = (process.env.EMAIL_TRANSPORT ?? "").toLowerCase();
+  if (configured === "resend") return "resend";
+  if (configured === "console") return "console";
+  // Unset: send for real if we have a key, otherwise fall back to the log.
+  return process.env.RESEND_API_KEY ? "resend" : "console";
+}
+
+function consoleTransport(mail: Mail): MailResult {
+  const rule = "-".repeat(64);
   console.info(
     [
-      line,
+      rule,
       "  SkillSwap mail (console transport — not actually sent)",
-      line,
+      rule,
       `  To:      ${mail.to}`,
       `  Subject: ${mail.subject}`,
-      line,
+      rule,
       mail.body
         .split("\n")
-        .map((l) => `  ${l}`)
+        .map((line) => `  ${line}`)
         .join("\n"),
-      line,
+      rule,
     ].join("\n")
   );
+  return { ok: true };
 }
 
-function smtpTransport(mail: Mail): void {
-  // Intentionally unimplemented. Wire this to your mail provider before a
-  // pilot, and remove SHOW_DEV_VERIFICATION_CODE from the environment.
-  throw new Error(
-    `EMAIL_TRANSPORT=smtp is not implemented yet. Cannot send "${mail.subject}" to ${mail.to}.`
-  );
+async function resendTransport(mail: Mail): Promise<MailResult> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    return { ok: false, error: "RESEND_API_KEY is not set." };
+  }
+
+  const from = process.env.EMAIL_FROM?.trim() || "SkillSwap <onboarding@resend.dev>";
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [mail.to],
+        subject: mail.subject,
+        text: mail.body,
+      }),
+      // Don't let a hanging provider hold a signup open.
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      console.error(`Resend rejected the message (${response.status}): ${detail}`);
+      return { ok: false, error: `Mail provider returned ${response.status}.` };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Could not reach the mail provider: ${message}`);
+    return { ok: false, error: "Could not reach the mail provider." };
+  }
 }
 
-export function sendMail(mail: Mail): void {
-  const transport = (process.env.EMAIL_TRANSPORT ?? "console").toLowerCase();
-  if (transport === "smtp") return smtpTransport(mail);
-  return consoleTransport(mail);
+export async function sendMail(mail: Mail): Promise<MailResult> {
+  return activeTransport() === "resend" ? resendTransport(mail) : consoleTransport(mail);
 }
 
-export function sendVerificationCode(to: string, name: string, code: string): void {
-  sendMail({
+export async function sendVerificationCode(
+  to: string,
+  name: string,
+  code: string
+): Promise<MailResult> {
+  return sendMail({
     to,
     subject: `${code} is your SkillSwap verification code`,
     body: [
@@ -64,4 +110,9 @@ export function sendVerificationCode(to: string, name: string, code: string): vo
       "Your skills become your currency.",
     ].join("\n"),
   });
+}
+
+/** True when codes are only being written to the server log. */
+export function mailIsSimulated(): boolean {
+  return activeTransport() === "console";
 }

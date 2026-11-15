@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { callWindow } from "@/lib/call-token";
 import type { SessionDetail, SessionStatus } from "@/lib/types";
 import { Avatar, CreditPill, formatWhen, relativeDay } from "./ui";
 
@@ -26,6 +27,10 @@ export function SessionCard({
     ? { name: session.teacher_name, handle: session.teacher_handle }
     : { name: session.learner_name, handle: session.learner_handle };
   const status = STATUS_STYLE[session.status];
+
+  // The call room exists for confirmed sessions, around their slot.
+  const window = callWindow(session.scheduled_at, session.duration_minutes);
+  const callOpen = session.status === "accepted" && window.isOpen;
 
   return (
     <article className="card p-5">
@@ -86,6 +91,22 @@ export function SessionCard({
 
       {session.cancel_reason ? (
         <p className="mt-3 text-sm italic text-muted">“{session.cancel_reason}”</p>
+      ) : null}
+
+      {callOpen ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md px-4 py-3"
+             style={{ background: "var(--c-brand-soft)" }}>
+          <span className="flex-1 text-sm font-semibold" style={{ color: "var(--c-brand)" }}>
+            Your call room is open
+          </span>
+          <Link href={`/call/${session.id}`} className="btn btn-primary btn-sm">
+            Join call
+          </Link>
+        </div>
+      ) : session.status === "accepted" ? (
+        <p className="mt-4 text-xs text-faint">
+          The call room opens 15 minutes before you&apos;re due to meet.
+        </p>
       ) : null}
 
       {children ? <div className="mt-5 border-t border-line pt-4">{children}</div> : null}

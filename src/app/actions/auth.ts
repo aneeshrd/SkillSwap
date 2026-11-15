@@ -112,7 +112,12 @@ export async function signUpAction(_prev: FormState, data: FormData): Promise<Fo
       now
     );
 
-  sendVerificationCode(email, name, createVerificationCode(id));
+  // A mail failure must not strand a created account: the session is issued
+  // either way and /verify offers a resend.
+  const sent = await sendVerificationCode(email, name, createVerificationCode(id));
+  if (!sent.ok) {
+    console.error(`Verification mail to ${email} failed: ${sent.error}`);
+  }
 
   const cookie = issueSessionCookie(id);
   (await cookies()).set(cookie.name, cookie.value, {
@@ -230,6 +235,11 @@ export async function resendCodeAction(): Promise<FormState> {
     return { error: `Hold on — you can request another code in ${limit.retryAfter} seconds.` };
   }
 
-  sendVerificationCode(user.email, user.name, createVerificationCode(user.id));
+  const sent = await sendVerificationCode(user.email, user.name, createVerificationCode(user.id));
+  if (!sent.ok) {
+    return {
+      error: `We couldn't send that email just now (${sent.error}) Try again in a minute, or ask a moderator to verify you by hand.`,
+    };
+  }
   return { ok: true, message: "New code sent. Check your school inbox." };
 }

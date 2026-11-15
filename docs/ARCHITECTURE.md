@@ -32,6 +32,49 @@ Every server action starts the same way: resolve the session, check the
 permission, validate with Zod, then act. `requireUser`, `requireVerifiedUser`
 and `requireAdmin` in `src/lib/session.ts` are the only three gates.
 
+## Video calls
+
+Calls are peer-to-peer WebRTC. The server's only job is introductions.
+
+```
+Maya's browser                 server.js                 Wei's browser
+      |                            |                            |
+      |-- ws /ws/call?token=... -->|<-- ws /ws/call?token=... ---|
+      |<------- peer-joined -------|                            |
+      |------------- offer ------->|---------- offer ---------->|
+      |<------------ answer -------|<--------- answer ----------|
+      |<----------- ice -------- --|---------- ice ------------>|
+      |                            |                            |
+      |=========== audio / video, directly between them ========|
+```
+
+**Admission.** The WebSocket server shares no database connection and no session
+cookie with the app. Instead `/call/[sessionId]` authorises the request the
+normal way — signed in, verified, one of the two people on an *accepted* session,
+inside the time window — and then mints a **call ticket**: a two-minute,
+HMAC-signed assertion of `{sessionId, userId, name}` (`src/lib/call-token.ts`).
+`server.js` verifies that signature with `SESSION_SECRET` and admits the socket.
+One shared secret, no shared state.
+
+**Rooms** are keyed by session id and hold at most two sockets. A reconnection
+from the same user replaces their previous socket rather than filling the room
+with a ghost, and a 30-second ping sweeps dead connections.
+
+**Negotiation** avoids the usual glare problem by construction: whoever is
+already waiting makes the offer, and the arriver answers. With two participants
+that is deterministic, so neither perfect-negotiation rollback nor politeness
+tie-breaking is needed.
+
+**Screen sharing** swaps the outgoing video track with `replaceTrack`, which
+needs no renegotiation. Mute and camera toggles flip `track.enabled`, so the
+senders stay in place and the connection is never rebuilt mid-session.
+
+**Media never touches the server**, and nothing is recorded. The trade-off is
+that a direct connection isn't always possible: STUN handles most networks, and
+the rest need a TURN relay (`TURN_URL`). Campus wifi is a common offender, so a
+pilot should configure one. When a connection fails the UI says which case it is
+rather than showing a generic error.
+
 ## Database
 
 `better-sqlite3`, synchronous, one connection per process. WAL mode lets
@@ -40,14 +83,31 @@ Synchronous SQLite in a request handler sounds alarming and isn't — a prepared
 statement against an indexed table resolves in microseconds, far faster than the
 network round-trip a hosted database would cost.
 
-`src/lib/schema.sql` is the single source of truth. `db.ts` executes it on first
-connection; every statement is `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF
-NOT EXISTS`, so it is safe to run on every boot.
+`src/lib/schema.sql` is the single source of truth for structure, and
+`src/lib/taxonomy.sql` for the skill catalogue. `db.ts` executes both on first
+connection. Every statement is `CREATE ... IF NOT EXISTS` or `INSERT OR IGNORE`,
+so running them on every boot is safe — and a brand-new deployment comes up with
+its tables and 55 skills already in place, with no migration step and no seed.
+
+The demo seed (`npm run db:seed`) sits on top of that and only creates people:
+students, sessions, ratings and a report. It never touches the catalogue, so it
+is the one thing you must *not* run in production.
 
 **There is no migration tool.** For a pilot that is a reasonable trade — but it
 means an additive change (a new table, a new index) is free, while a
 destructive one (renaming a column, tightening a constraint) needs a hand-written
 migration and a backup. Plan for that before the first real student signs up.
+
+## Single node, on purpose
+
+Three things in this application are per-process: the SQLite file, the
+fixed-window rate limiter, and the in-memory map of call rooms. A second
+instance would serve a different database, enforce its own separate rate limits,
+and host a different set of rooms — so two people in the same session could land
+on different machines and never connect.
+
+`fly.toml` therefore pins one machine. Scaling horizontally is not a config
+change; it means Postgres, Redis and a signalling service that shares room state.
 
 ## Why no ORM
 

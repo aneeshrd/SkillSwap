@@ -110,6 +110,14 @@ system can't say *why* it surfaced someone, it doesn't surface them.
 Request → accept/decline → happen → both confirm → both rate. Credits are held
 when the request is sent and transferred only when *both* people confirm.
 
+**Video calls, built in**
+Every confirmed session gets a call room at `/call/<id>`: camera, microphone,
+screen sharing and a timer against the booked length. It is real peer-to-peer
+WebRTC — SkillSwap relays the connection handshake over a WebSocket and nothing
+else, so no audio or video ever passes through the server, and none is recorded.
+The room only opens for the two students in the session, from 15 minutes before
+the slot until two hours after it was due to end.
+
 **Credits**
 An append-only ledger. A balance is `SUM(delta)` and nothing else; there is no
 mutable balance column anywhere, so every credit in the system is traceable to
@@ -129,11 +137,13 @@ corrections, and an audit log of every moderator action.
 | Framework | Next.js 15 (App Router, React 19, Server Actions) |
 | Language | TypeScript, strict |
 | Styling | Tailwind CSS v4 with a token-based design system in `src/app/globals.css` |
+| Server | Custom Node server (`server.js`) — Next's handler plus a `ws` endpoint for call signalling |
+| Realtime | WebRTC peer-to-peer; `ws` for signalling only |
 | Database | SQLite via `better-sqlite3`, hand-written SQL, no ORM |
 | Auth | `node:crypto` scrypt + server-side sessions. No third-party auth dependency |
 | Validation | Zod on every server action |
 
-There are five runtime dependencies in total. That is deliberate — a student
+There are six runtime dependencies in total. That is deliberate — a student
 project that nobody can audit is not a safe place to send students.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layering,
@@ -146,9 +156,13 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layering,
 ## Project layout
 
 ```
+server.js           Next + the WebSocket signalling endpoint at /ws/call
+Dockerfile          single-stage-per-concern build, with the native toolchain
+fly.toml            one machine, one volume — see "Deploying"
 src/
   app/
     actions/        server actions — the only place data is written
+    call/[id]/      the video call room
     dashboard/      signed-in area (overview, requests, sessions, wallet, profile, safety)
     admin/          moderation queue
     u/[handle]/     public profile + booking
@@ -158,6 +172,8 @@ src/
     ...             server-rendered UI primitives
   lib/
     schema.sql      the single source of truth for the database
+    taxonomy.sql    the skill catalogue, applied to every database on connect
+    call-token.ts   short-lived signed tickets admitting someone to a call
     db.ts           connection, migration, transactions
     auth.ts         passwords, sessions, verification codes
     credits.ts      the ledger
@@ -171,50 +187,95 @@ scripts/
 
 ---
 
-## Deploying a pilot
+## Deploying
 
-SQLite with `better-sqlite3` means **one node with a persistent disk** — a VPS,
-Fly.io with a volume, Render, or a school-hosted box. It will not work on a
-serverless platform where the filesystem is ephemeral and every request may hit
-a different instance.
+SQLite plus in-memory call rooms means **one machine with a persistent disk**.
+Not Vercel, Netlify or Cloudflare: serverless wipes the filesystem and spreads
+requests across instances, so the ledger would vanish and two people in the same
+call could land on different servers. `fly.toml` therefore pins a single machine,
+and `fly scale count 2` would break both the database and calling.
 
-Before putting this in front of students:
+### Fly.io
 
-1. Set a strong `SESSION_SECRET` and keep `.env.local` out of version control.
-2. Set `ALLOWED_EMAIL_DOMAINS` to your school's real domains.
-3. Set `ADMIN_EMAILS` to your actual moderators.
-4. **Implement `smtpTransport` in `src/lib/email.ts`** and set
-   `EMAIL_TRANSPORT=smtp`. Until you do, nobody can verify an account without
-   access to the server log.
-5. Unset `DEV_CODE_HINT`.
-6. Serve over HTTPS — session cookies set `secure` in production.
-7. Schedule `npm run sweep` hourly, and remove the `settleStaleSessions()` call
-   from `src/app/dashboard/layout.tsx`.
-8. Back up `data/skillswap.db`. The ledger is the system of record.
+```bash
+curl -L https://fly.io/install.sh | sh
+fly auth signup
+```
 
----
+```bash
+fly launch --no-deploy --copy-config --name your-app-name
+```
+
+```bash
+fly volumes create skillswap_data --size 1 --region iad
+```
+
+```bash
+fly secrets set \
+  SESSION_SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" \
+  ALLOWED_EMAIL_DOMAINS="yourschool.edu" \
+  ADMIN_EMAILS="you@yourschool.edu" \
+  RESEND_API_KEY="re_..." \
+  EMAIL_FROM="SkillSwap <noreply@yourdomain.edu>"
+```
+
+```bash
+fly deploy
+```
+
+The first boot creates the tables and loads the 55-skill catalogue from
+`src/lib/taxonomy.sql`. **Do not run the seed in production** — it creates
+seventeen fictional students.
+
+### Before students use it
+
+1. **Email must work.** Sign up at [resend.com](https://resend.com) (free:
+   3,000/month), verify your sending domain, and set `RESEND_API_KEY` and
+   `EMAIL_FROM`. Their shared `onboarding@resend.dev` sender only delivers to
+   your own account address. Without working email, nobody can verify, so nobody
+   can sign up.
+2. **Add a TURN server, or some calls will fail.** WebRTC falls back to a relay
+   when a network blocks direct connections, and university wifi frequently does.
+   [Metered's open relay](https://www.metered.ca/tools/openrelay/) has a free
+   tier; set `TURN_URL`, `TURN_USERNAME` and `TURN_CREDENTIAL`. Without one, the
+   call page says so plainly when a connection fails rather than hiding it.
+3. **Add your school** to the `schools` table so profiles show it. Accounts work
+   without a matching row; they just show no school name.
+4. **HTTPS is required** for camera access. Fly provides it; a plain-HTTP
+   deployment will have working pages and broken calls.
+5. **Schedule the sweep** — `npm run sweep` hourly — and remove the
+   `settleStaleSessions()` call from `src/app/dashboard/layout.tsx`.
+6. **Back up the volume.** The ledger is the system of record.
+
+### Other hosts
+
+**Render** and **Railway** both work the same way (one instance, one persistent
+disk). Any Linux box with Node 22 works too: `npm ci && npm run build && npm start`
+behind nginx with a TLS certificate.
 
 ## Known gaps
 
 Stated plainly, because a pilot deserves an honest list:
 
-- **No email is actually sent.** The SMTP transport is a stub that throws.
-- **No password reset.** A student who forgets their password needs a moderator.
-- **No direct messaging.** Communication is limited to the request message and
-  the teacher's reply, deliberately — but it means scheduling changes have to
-  happen outside the platform.
-- **No calendar integration.** Availability is a hint, not a booking system, and
-  nothing prevents double-booking the same slot.
-- **Single node only.** Rate limits live in SQLite and assume one process.
-- **No account deletion flow.** There's no self-serve way to exercise a data
-  deletion request.
-- **Moderation is not localised or staffed.** `ADMIN_EMAILS` is a list, not a
-  rota, and there is no escalation path or SLA.
-- **Verification proves a school email, not an identity.** This is covered at
-  length in [`docs/SAFETY.md`](docs/SAFETY.md) and on the in-app safety page,
-  because students should understand the limit before they meet a stranger.
-
----
+- **Calls need a TURN server on restrictive networks.** STUN is built in and
+  covers most connections; without TURN configured, some will fail outright.
+- **Calls are one-to-one.** Two people per room, which is what a tutoring
+  session is. Group sessions would need an SFU, which is a different project.
+- **No password reset.** A student who forgets theirs needs a moderator.
+- **No direct messaging.** Communication is the request message, the teacher's
+  reply, and the call itself — deliberately, but it means rescheduling happens
+  off-platform.
+- **No calendar integration.** Availability is a hint; nothing prevents
+  double-booking a slot.
+- **Single node only.** Rate limits, call rooms and the database all assume one
+  process.
+- **No account deletion flow.** There's no self-serve way to exercise a deletion
+  request.
+- **Moderation is not staffed.** `ADMIN_EMAILS` is a list, not a rota, and there
+  is no escalation path or SLA.
+- **Verification proves a school email, not an identity.** Covered at length in
+  [`docs/SAFETY.md`](docs/SAFETY.md) and on the in-app safety page, because
+  students should understand the limit before they meet a stranger.
 
 ## Licence
 
