@@ -204,9 +204,19 @@ and `fly scale count 2` would break both the database and calling.
 ### Fly.io
 
 ```bash
-curl -L https://fly.io/install.sh | sh
-fly auth signup
+curl -L https://fly.io/install.sh | sh && fly auth signup
 ```
+
+Then one command, which creates the app, the volume and the secrets and
+deploys. It is safe to re-run.
+
+```bash
+./scripts/deploy.sh
+```
+
+<details>
+<summary>Or do it by hand</summary>
+
 
 ```bash
 fly launch --no-deploy --copy-config --name your-app-name
@@ -228,6 +238,8 @@ fly secrets set \
 ```bash
 fly deploy
 ```
+
+</details>
 
 The first boot creates the tables and loads the 55-skill catalogue from
 `src/lib/taxonomy.sql`. **Do not run the seed in production** — it creates

@@ -23,11 +23,11 @@ primary_region = "iad"
 [http_service]
   internal_port = 3000
   force_https = true
-  # Keep one machine up: suspending mid-call would drop it, and WebSockets
-  # don't survive a cold start.
-  auto_stop_machines = false
+  # "off" keeps the machine up. Suspending it mid-call would drop the call,
+  # and a WebSocket doesn't survive a cold start. (min_machines_running only
+  # has an effect with "stop" or "suspend", so it is deliberately absent.)
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 1
 
   [http_service.concurrency]
     type = "connections"
@@ -42,5 +42,8 @@ primary_region = "iad"
   timeout = "5s"
 
 [[vm]]
-  size = "shared-cpu-1x"
+  # Spelled out rather than size = "shared-cpu-1x", because `size` and
+  # `memory` together conflict.
+  cpu_kind = "shared"
+  cpus = 1
   memory = "512mb"
