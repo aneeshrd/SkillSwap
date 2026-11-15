@@ -189,6 +189,12 @@ scripts/
 
 ## Deploying
 
+**What it costs.** Roughly **$5/month**. Fly.io retired its free allowance for
+new organisations, so a single always-on `shared-cpu-1x` machine plus a 1GB
+volume is about $4–5/month at current rates. Render and Railway land in the same
+place. There is no free way to host this, because "always on with a persistent
+disk" is the one thing free tiers don't give you.
+
 SQLite plus in-memory call rooms means **one machine with a persistent disk**.
 Not Vercel, Netlify or Cloudflare: serverless wipes the filesystem and spreads
 requests across instances, so the ledger would vanish and two people in the same
@@ -229,11 +235,12 @@ seventeen fictional students.
 
 ### Before students use it
 
-1. **Email must work.** Sign up at [resend.com](https://resend.com) (free:
-   3,000/month), verify your sending domain, and set `RESEND_API_KEY` and
-   `EMAIL_FROM`. Their shared `onboarding@resend.dev` sender only delivers to
-   your own account address. Without working email, nobody can verify, so nobody
-   can sign up.
+1. **Email must work.** Sign up at [resend.com](https://resend.com) — the free
+   plan is 3,000 emails a month **capped at 100 a day**, which is the limit a
+   launch actually hits. Verify a sending domain you control, then set
+   `RESEND_API_KEY` and `EMAIL_FROM`. Resend's shared `onboarding@resend.dev`
+   sender is fine for a smoke test to your own address but not for real
+   students. Without working email nobody can verify, so nobody can sign up.
 2. **Add a TURN server, or some calls will fail.** WebRTC falls back to a relay
    when a network blocks direct connections, and university wifi frequently does.
    [Metered's open relay](https://www.metered.ca/tools/openrelay/) has a free
