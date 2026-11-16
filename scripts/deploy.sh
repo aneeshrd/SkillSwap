@@ -26,8 +26,20 @@ ask() { # ask VAR "prompt" "default"
 }
 
 command -v fly >/dev/null || die "flyctl not found. Install it: curl -L https://fly.io/install.sh | sh"
-command -v node >/dev/null || die "node not found — needed to generate SESSION_SECRET."
 fly auth whoami >/dev/null 2>&1 || die "Not logged in. Run: fly auth login"
+
+# 32 random bytes, from whichever of these the machine has.
+random_secret() {
+  if command -v openssl >/dev/null; then
+    openssl rand -hex 32
+  elif command -v node >/dev/null; then
+    node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))'
+  elif command -v python3 >/dev/null; then
+    python3 -c 'import secrets; print(secrets.token_hex(32))'
+  else
+    die "Need openssl, node or python3 to generate SESSION_SECRET."
+  fi
+}
 
 bold "SkillSwap deploy"
 echo
@@ -75,7 +87,7 @@ fi
 # ------------------------------------------------------------ secrets
 bold "Setting secrets"
 SECRET_ARGS=(
-  "SESSION_SECRET=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+  "SESSION_SECRET=$(random_secret)"
   "ALLOWED_EMAIL_DOMAINS=$DOMAINS"
   "ADMIN_EMAILS=$ADMINS"
 )
