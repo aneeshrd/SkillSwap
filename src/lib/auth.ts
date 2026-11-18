@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getDb, newId, nowIso } from "./db";
+import { appSecret } from "./secret";
 import type { User } from "./types";
 
 // ---------------------------------------------------------------- passwords
@@ -76,22 +77,11 @@ export function isAdminEmail(email: string): boolean {
 const COOKIE_NAME = "skillswap_session";
 const SESSION_DAYS = 30;
 
-function sessionSecret(): string {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 16) {
-    // Fail loudly rather than silently signing with a predictable key.
-    throw new Error(
-      "SESSION_SECRET is missing or too short. Copy .env.example to .env.local and set it."
-    );
-  }
-  return secret;
-}
-
 const sha256 = (value: string): string =>
   crypto.createHash("sha256").update(value).digest("hex");
 
 function sign(token: string): string {
-  return crypto.createHmac("sha256", sessionSecret()).update(token).digest("hex");
+  return crypto.createHmac("sha256", appSecret()).update(token).digest("hex");
 }
 
 /** Creates a server-side session row and returns the cookie value to set. */

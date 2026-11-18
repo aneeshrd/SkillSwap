@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { appSecret } from "./secret";
 
 /**
  * A short-lived, signed ticket that lets the WebSocket signalling server admit
@@ -22,19 +23,11 @@ export interface CallTicket {
   e: number;
 }
 
-function secret(): string {
-  const value = process.env.SESSION_SECRET;
-  if (!value || value.length < 16) {
-    throw new Error("SESSION_SECRET is missing or too short.");
-  }
-  return value;
-}
-
 const b64url = (input: Buffer | string): string =>
   Buffer.from(input).toString("base64url");
 
 function sign(payload: string): string {
-  return crypto.createHmac("sha256", secret()).update(payload).digest("base64url");
+  return crypto.createHmac("sha256", appSecret()).update(payload).digest("base64url");
 }
 
 export function mintCallToken(ticket: Omit<CallTicket, "e">): string {

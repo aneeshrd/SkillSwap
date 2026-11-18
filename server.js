@@ -16,6 +16,19 @@ const next = require("next");
 const { WebSocketServer } = require("ws");
 
 const dev = process.env.NODE_ENV !== "production";
+
+// Fail at boot, not at the first signup, if production is misconfigured.
+if (!dev) {
+  const secret = (process.env.SESSION_SECRET || "").trim();
+  if (secret.length < 16) {
+    console.error(
+      "\n  SESSION_SECRET is missing or too short.\n" +
+        "  Set it before starting:  fly secrets set SESSION_SECRET=\"$(openssl rand -hex 32)\"\n"
+    );
+    process.exit(1);
+  }
+}
+
 const port = Number(process.env.PORT || 3000);
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 

@@ -15,6 +15,7 @@ next-env.d.ts
 
 # local database (regenerate with `npm run db:reset`)
 /data/*.db
+/data/.dev-session-secret
 /data/*.db-journal
 /data/*.db-wal
 /data/*.db-shm

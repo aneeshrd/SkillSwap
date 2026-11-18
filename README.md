@@ -36,20 +36,16 @@ npm install
 ```
 
 ```bash
-cp .env.example .env.local
-```
-
-Generate a session secret and paste it into `.env.local` as `SESSION_SECRET`:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-Seed a demo community and start the app:
-
-```bash
 npm run db:reset && npm run dev
 ```
+
+No configuration needed to run it locally. A development session secret is
+generated on first use and kept in `data/`, verification codes print to the
+terminal instead of being emailed, and the skill catalogue loads itself.
+Copy `.env.example` to `.env.local` when you want to change any of that.
+
+A **production** start refuses to boot without `SESSION_SECRET`, rather than
+failing later at someone's first signup.
 
 Open http://localhost:3000.
 
