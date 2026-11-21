@@ -9,7 +9,8 @@ export interface FormState {
 export const emptyState: FormState = {};
 
 export function fieldErrorsFrom(
-  issues: { path: (string | number)[]; message: string }[]
+  // Zod 4 types `path` as PropertyKey[], which includes symbol.
+  issues: readonly { readonly path: readonly PropertyKey[]; readonly message: string }[]
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const issue of issues) {
